@@ -82,7 +82,7 @@ def run_agent(question, provider, tools, max_steps=6):
     observed_urls = []
     fetched_incidents = set()
     pending_linked_incidents = []
-    rate_limit_counts = {}  # tool_name -> số lần bị RATE_LIMITED (cumulative)
+    rate_limit_counts = {}
 
     for step in range(1, max_steps + 1):
         try:
@@ -148,7 +148,6 @@ def run_agent(question, provider, tools, max_steps=6):
                             'message': str(exc)[:200],
                         }
 
-                    # Tự đếm và nhúng guidance vào RATE_LIMITED result để model biết retry/dừng đúng lúc
                     if isinstance(tool_result, dict) and tool_result.get('error') == 'RATE_LIMITED':
                         rate_limit_counts[name] = rate_limit_counts.get(name, 0) + 1
                         count = rate_limit_counts[name]
