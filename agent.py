@@ -82,6 +82,7 @@ def run_agent(question, provider, tools, max_steps=6):
     observed_urls = []
     fetched_incidents = set()
     pending_linked_incidents = []
+    rate_limit_counts = {}  # tool_name -> số lần bị RATE_LIMITED (cumulative)
 
     for step in range(1, max_steps + 1):
         try:
@@ -146,6 +147,32 @@ def run_agent(question, provider, tools, max_steps=6):
                             'error': 'TOOL_EXECUTION_ERROR',
                             'message': str(exc)[:200],
                         }
+
+                    # Tự đếm và nhúng guidance vào RATE_LIMITED result để model biết retry/dừng đúng lúc
+                    if isinstance(tool_result, dict) and tool_result.get('error') == 'RATE_LIMITED':
+                        rate_limit_counts[name] = rate_limit_counts.get(name, 0) + 1
+                        count = rate_limit_counts[name]
+                        if count < 3:
+                            tool_result = {
+                                **tool_result,
+                                'rate_limit_attempt': count,
+                                'retry_guidance': (
+                                    f'Lần {count}/3. Có thể thử lại {3 - count} lần nữa. '
+                                    'RATE_LIMITED không phải outage của dịch vụ.'
+                                ),
+                            }
+                        else:
+                            tool_result = {
+                                **tool_result,
+                                'rate_limit_attempt': count,
+                                'retry_guidance': (
+                                    f'Đã thử {count} lần, đều bị RATE_LIMITED. '
+                                    'DỪNG thử lại tool này ngay. '
+                                    'Báo cáo rõ: không xác định được trạng thái do rate limit sau 3 lần thử. '
+                                    'Chuyển sang tổng hợp thông tin từ các dịch vụ khác đã lấy được.'
+                                ),
+                            }
+
                     trace_args = args
 
                     if name == 'get_incident_details':
